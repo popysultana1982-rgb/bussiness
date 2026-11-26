@@ -522,8 +522,8 @@ async def broadcast_stock_restock_alert(bot, prod_id: int, prod_name: str, added
         "────────────────────────\n"
         "⚡ <i>স্টক শেষ হওয়ার আগেই এখনই অর্ডার করুন!</i>"
     )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛒 Buy Now", callback_data=f"prod_{prod_id}")]
+   kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛒 Buy Now", callback_data=f"usr_prod_{prod_id}")]
     ])
 
     sent_count = 0
