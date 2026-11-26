@@ -4579,65 +4579,65 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             f"<code>{ref_link}</code>"
         )
         await query.message.reply_text(txt, parse_mode=ParseMode.HTML)
-        return
+       return
 
-   if data == "prof_purchases":
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT id, receipt_no, product_name, quantity, total_bdt, status, order_date FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 10", (user_id,))
-        ords = c.fetchall()
-        conn.close()
-        if not ords:
-            await query.message.reply_text("🛒 আপনার এখনো কোনো অর্ডার হিস্টোরি নেই।")
+        if data == "prof_purchases":
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT id, receipt_no, product_name, quantity, total_bdt, status, order_date FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 10", (user_id,))
+            ords = c.fetchall()
+            conn.close()
+            if not ords:
+                await query.message.reply_text("🛒 আপনার এখনো কোনো অর্ডার হিস্টোরি নেই।")
+                return
+            kb = []
+            for o in ords:
+                st_ic = "✅" if o["status"] == "completed" else ("⏳" if o["status"] == "pending_delivery" else "❌")
+                kb.append([InlineKeyboardButton(f"{st_ic} {o['product_name']} (x{o['quantity']}) — {o['total_bdt']:.0f} Tk", callback_data=f"prof_view_order_{o['id']}")])
+            await query.message.reply_text("🛒 <b>আপনার সর্বশেষ অর্ডারসমূহ:</b>\nযেকোনো অর্ডারে ক্লিক করে বিস্তারিত ও প্রোডাক্ট দেখুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
             return
-        kb = []
-        for o in ords:
-            st_ic = "✅" if o["status"] == "completed" else ("⏳" if o["status"] == "pending_delivery" else "❌")
-            kb.append([InlineKeyboardButton(f"{st_ic} {o['product_name']} (x{o['quantity']}) — {o['total_bdt']:.0f} Tk", callback_data=f"prof_view_order_{o['id']}")])
-        await query.message.reply_text("🛒 <b>আপনার সর্বশেষ অর্ডারসমূহ:</b>\nযেকোনো অর্ডারে ক্লিক করে বিস্তারিত ও প্রোডাক্ট দেখুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
-        return
 
-    if data.startswith("prof_view_order_"):
-        oid = int(data.split("_")[3])
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT * FROM orders WHERE id = ? AND user_id = ?", (oid, user_id))
-        o = c.fetchone()
-        conn.close()
-        if not o:
-            await query.message.reply_text("❌ অর্ডার পাওয়া যায়নি।")
-            return
-        if o["delivered_data"]:
-            raw_deliv = o["delivered_data"]
-            try:
-                items = json.loads(raw_deliv) if raw_deliv.startswith("[") else [ln for ln in raw_deliv.splitlines() if ln.strip()]
-            except Exception:
-                items = [ln for ln in raw_deliv.splitlines() if ln.strip()]
-            card = format_credentials_card(items, o["product_name"], o["category_name"] or "Service")
-            full_msg = f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n\n{card}"
-            if len(full_msg) <= 4000 and len(items) <= 10:
-                await query.message.reply_text(full_msg, parse_mode=ParseMode.HTML)
+        if data.startswith("prof_view_order_"):
+            oid = int(data.split("_")[3])
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT * FROM orders WHERE id = ? AND user_id = ?", (oid, user_id))
+            o = c.fetchone()
+            conn.close()
+            if not o:
+                await query.message.reply_text("❌ অর্ডার পাওয়া যায়নি।")
+                return
+            if o["delivered_data"]:
+                raw_deliv = o["delivered_data"]
+                try:
+                    items = json.loads(raw_deliv) if raw_deliv.startswith("[") else [ln for ln in raw_deliv.splitlines() if ln.strip()]
+                except Exception:
+                    items = [ln for ln in raw_deliv.splitlines() if ln.strip()]
+                card = format_credentials_card(items, o["product_name"], o["category_name"] or "Service")
+                full_msg = f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n\n{card}"
+                if len(full_msg) <= 4000 and len(items) <= 10:
+                    await query.message.reply_text(full_msg, parse_mode=ParseMode.HTML)
+                else:
+                    excel_bio = generate_excel_delivery(items, o["product_name"], o["receipt_no"])
+                    await query.message.reply_document(
+                        document=InputFile(excel_bio, filename=f"Order_{o['receipt_no']}.xlsx"),
+                        caption=f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n📦 <b>{html.escape(o['product_name'])}</b> ({len(items)} pcs)",
+                        parse_mode=ParseMode.HTML,
+                    )
             else:
-                excel_bio = generate_excel_delivery(items, o["product_name"], o["receipt_no"])
-                await query.message.reply_document(
-                    document=InputFile(excel_bio, filename=f"Order_{o['receipt_no']}.xlsx"),
-                    caption=f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n📦 <b>{html.escape(o['product_name'])}</b> ({len(items)} pcs)",
+                await query.message.reply_text(
+                    f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n"
+                    f"📦 <b>Product:</b> {o['product_name']} (x{o['quantity']})\n"
+                    f"💰 <b>Total:</b> {o['total_bdt']:.2f} BDT\n"
+                    f"📌 <b>Status:</b> {o['status'].upper()}",
                     parse_mode=ParseMode.HTML,
                 )
-        else:
-            await query.message.reply_text(
-                f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n"
-                f"📦 <b>Product:</b> {o['product_name']} (x{o['quantity']})\n"
-                f"💰 <b>Total:</b> {o['total_bdt']:.2f} BDT\n"
-                f"📌 <b>Status:</b> {o['status'].upper()}",
-                parse_mode=ParseMode.HTML,
-            )
-        return
+            return
 
-    if data.startswith("adm_"):
-        if is_admin(user_id):
-            await handle_admin_callbacks(query, data, context)
-        return
+        if data.startswith("adm_"):
+            if is_admin(user_id):
+                await handle_admin_callbacks(query, data, context)
+            return
 # ------------------------------------------------------------------------------
 # 9. PRODUCT CARD & PURCHASE ENGINE
 # ------------------------------------------------------------------------------
