@@ -3352,38 +3352,21 @@ def generate_excel_delivery(items: List[str], product_name: str, receipt_no: str
         bottom=Side(style='thin', color='D9D9D9')
     )
 
-    headers = ["SL", "Product", "Email / Username", "Password", "Token / Session / Key", "Full Raw String", "Delivery Date"]
+    headers = [f"{product_name} ({len(items)} pcs)"]
     ws.append(headers)
-    for col_num in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col_num)
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+    cell = ws.cell(row=1, column=1)
+    cell.fill = header_fill
+    cell.font = header_font
+    cell.alignment = Alignment(horizontal="left", vertical="center")
 
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %I:%M %p")
     for idx, item in enumerate(items, start=1):
-        delim = "|" if "|" in item else ":"
-        parts = [p.strip() for p in item.split(delim) if p.strip()]
-        email = parts[0] if len(parts) >= 1 else item
-        pwd = parts[1] if len(parts) >= 2 else ""
-        token = parts[2] if len(parts) >= 3 else ""
-        row_data = [idx, product_name, email, pwd, token, item, now_str]
-        ws.append(row_data)
-        row_idx = idx + 1
-        for c in range(1, len(row_data) + 1):
-            cell = ws.cell(row=row_idx, column=c)
-            cell.font = data_font
-            cell.border = thin_border
-            if c in (1, 7):
-                cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws.append([item.strip()])
+        data_cell = ws.cell(row=idx + 1, column=1)
+        data_cell.font = data_font
+        data_cell.border = thin_border
+        data_cell.alignment = Alignment(horizontal="left", vertical="center")
 
-    ws.column_dimensions['A'].width = 6
-    ws.column_dimensions['B'].width = 22
-    ws.column_dimensions['C'].width = 32
-    ws.column_dimensions['D'].width = 20
-    ws.column_dimensions['E'].width = 45
-    ws.column_dimensions['F'].width = 50
-    ws.column_dimensions['G'].width = 22
+    ws.column_dimensions['A'].width = 90
 
     bio = io.BytesIO()
     wb.save(bio)
