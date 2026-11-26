@@ -4632,13 +4632,12 @@ if data.startswith("prof_view_order_"):
                 f"📌 <b>Status:</b> {o['status'].upper()}",
                 parse_mode=ParseMode.HTML,
             )
-        return
+  return
 
     if data.startswith("adm_"):
         if is_admin(user_id):
             await handle_admin_callbacks(query, data, context)
         return
-
 # ------------------------------------------------------------------------------
 # 9. PRODUCT CARD & PURCHASE ENGINE
 # ------------------------------------------------------------------------------
