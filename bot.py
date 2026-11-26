@@ -4597,7 +4597,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.reply_text("🛒 <b>আপনার সর্বশেষ অর্ডারসমূহ:</b>\nযেকোনো অর্ডারে ক্লিক করে বিস্তারিত ও প্রোডাক্ট দেখুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
         return
 
-    if data.startswith("prof_view_order_"):
+  if data.startswith("prof_view_order_"):
         oid = int(data.split("_")[3])
         conn = get_db()
         c = conn.cursor()
@@ -4605,7 +4605,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         o = c.fetchone()
         conn.close()
         if not o:
-            await query.message.reply_text("❌ অর্ডার পাওয়া যায়নি।")
+            await query.message.reply_text("❌ অর্ডার পাওয়া যায়নি।")
             return
         if o["delivered_data"]:
             raw_deliv = o["delivered_data"]
@@ -4614,7 +4614,16 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             except Exception:
                 items = [ln for ln in raw_deliv.splitlines() if ln.strip()]
             card = format_credentials_card(items, o["product_name"], o["category_name"] or "Service")
-            await query.message.reply_text(f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n\n{card}", parse_mode=ParseMode.HTML)
+            full_msg = f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n\n{card}"
+            if len(full_msg) <= 4000 and len(items) <= 10:
+                await query.message.reply_text(full_msg, parse_mode=ParseMode.HTML)
+            else:
+                excel_bio = generate_excel_delivery(items, o["product_name"], o["receipt_no"])
+                await query.message.reply_document(
+                    document=InputFile(excel_bio, filename=f"Order_{o['receipt_no']}.xlsx"),
+                    caption=f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n📦 <b>{html.escape(o['product_name'])}</b> ({len(items)} pcs)",
+                    parse_mode=ParseMode.HTML,
+                )
         else:
             await query.message.reply_text(
                 f"🧾 <b>Receipt:</b> <code>{o['receipt_no']}</code>\n"
