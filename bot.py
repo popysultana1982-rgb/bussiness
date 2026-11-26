@@ -3571,63 +3571,6 @@ def generate_pdf_receipt(
 def format_credentials_card(items: List[str], prod_name: str, cat_name: str) -> str:
     """Formats credentials with one-tap copy code blocks."""
     is_proxy = "PROXY" in cat_name.upper() or "PROXY" in prod_name.upper()
-    lines = []
-
-    if is_proxy:
-        lines.append("✅ <b>Proxy Delivered!</b>")
-        lines.append(f"🌐 <b>{prod_name}</b>")
-        lines.append("────────────────────────")
-        for idx, item in enumerate(items, start=1):
-            parts = [p.strip() for p in item.replace("@", ":").split(":") if p.strip()]
-            if len(parts) >= 4:
-                host, port, u_name, pwd = parts[0], parts[1], parts[2], parts[3]
-            elif len(parts) == 2:
-                host, port = parts[0], parts[1]
-                u_name, pwd = "N/A", "N/A"
-            else:
-                host, port, u_name, pwd = item, "N/A", "N/A", "N/A"
-
-            if len(items) > 1:
-                lines.append(f"🌐 <b>Proxy #{idx}</b>")
-            lines.append(f"🖥️ <b>Host</b>     : <code>{host}</code>")
-            lines.append(f"🔌 <b>Port</b>     : <code>{port}</code>")
-            lines.append(f"👤 <b>Username</b> : <code>{u_name}</code>")
-            lines.append(f"🔐 <b>Password</b> : <code>{pwd}</code>")
-            lines.append(f"📋 <b>Full</b>     : <code>{item}</code>")
-            if idx < len(items):
-                lines.append("")
-    else:
-        lines.append("✅ <b>Service Delivered!</b>")
-        lines.append(f"🛡️ <b>{prod_name}</b>")
-        lines.append("────────────────────────")
-        for idx, item in enumerate(items, start=1):
-            delim = "|" if "|" in item else ":"
-            parts = [p.strip() for p in item.split(delim) if p.strip()]
-            if len(parts) >= 2:
-                email, pwd = parts[0], parts[1]
-                if len(items) > 1:
-                    lines.append(f"📦 <b>Item #{idx}</b>")
-                lines.append(f"📧 <b>Email / User</b> : <code>{email}</code>")
-                lines.append(f"🔐 <b>Password</b>     : <code>{pwd}</code>")
-                if len(parts) >= 3:
-                    tok = parts[2]
-                    tok_disp = tok[:100] + "..." if len(tok) > 100 else tok
-                    lines.append(f"🎟️ <b>Token / Session</b> : <code>{tok_disp}</code>")
-            else:
-                if len(items) > 1:
-                    lines.append(f"🔑 <b>Key / Code #{idx}</b>")
-                item_disp = item[:100] + "..." if len(item) > 100 else item
-                lines.append(f"🎟️ <b>Key / Code</b> : <code>{item_disp}</code>")
-            if idx < len(items):
-                lines.append("")
-
-    lines.append("────────────────────────")
-    lines.append("💡 <i>Tap any value above to copy in one click</i>")
-    return "\n".join(lines)
-
-def format_credentials_card(items: List[str], prod_name: str, cat_name: str) -> str:
-    """Formats credentials with one-tap copy code blocks."""
-    is_proxy = "PROXY" in cat_name.upper() or "PROXY" in prod_name.upper()
     is_mail = "MAIL" in cat_name.upper() or "HOTMAIL" in prod_name.upper() or "OUTLOOK" in prod_name.upper()
     lines = []
 
@@ -3694,6 +3637,16 @@ def format_credentials_card(items: List[str], prod_name: str, cat_name: str) -> 
     lines.append("────────────────────────")
     lines.append("💡 <i>Tap any value above to copy</i>")
     return "\n".join(lines)
+
+
+async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user or not update.message or not update.message.text:
+        return
+    text = update.message.text
+    if not is_admin(user.id):
+        return
+    state, sdata = get_user_state(user.id)
 
 
 
