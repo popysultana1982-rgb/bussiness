@@ -4597,7 +4597,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.message.reply_text("🛒 <b>আপনার সর্বশেষ অর্ডারসমূহ:</b>\nযেকোনো অর্ডারে ক্লিক করে বিস্তারিত ও প্রোডাক্ট দেখুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
         return
 
-      if data.startswith("prof_view_order_"):
+if data.startswith("prof_view_order_"):
         oid = int(data.split("_")[3])
         conn = get_db()
         c = conn.cursor()
