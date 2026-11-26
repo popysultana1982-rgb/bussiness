@@ -7243,6 +7243,12 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         conn.commit()
         c.execute("SELECT COUNT(*) as cnt FROM stock WHERE product_id = ? AND is_sold = 0", (prod_id,))
         total_now = c.fetchone()["cnt"]
+        c.execute(
+            "SELECT p.name as prod_name, p.price_bdt as price, s.name as sub_name "
+            "FROM products p LEFT JOIN subcategories s ON p.subcategory_id = s.id WHERE p.id = ?",
+            (prod_id,),
+        )
+        p_info = c.fetchone()
         conn.close()
 
         set_user_state(user.id, None)
@@ -7250,6 +7256,18 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
             f"🎉 <b>এক্সেল স্টক আপলোড সম্পন্ন!</b>\n📊 নতুন যুক্ত: <b>{len(items)}</b> টি | মোট স্টক: <b>{total_now}</b> টি।",
             parse_mode=ParseMode.HTML,
         )
+        if p_info:
+            asyncio.create_task(
+                broadcast_stock_restock_alert(
+                    context.bot,
+                    int(prod_id),
+                    str(p_info["prod_name"]),
+                    len(items),
+                    int(total_now),
+                    float(p_info["price"] or 0),
+                    str(p_info["sub_name"] or ""),
+                )
+            )
 
 # ------------------------------------------------------------------------------
 # 12. APPLICATION INITIALIZATION & RUNNER
