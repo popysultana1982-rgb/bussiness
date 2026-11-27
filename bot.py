@@ -6770,7 +6770,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                         str(p_info["sub_name"] or ""),
                     )
                 )
-       return
+        return
 
     if state == "ADMIN_WAITING_RESTOCK_MSG":
         raw_tpl = update.message.text.strip()
