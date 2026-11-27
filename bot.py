@@ -5413,75 +5413,181 @@ async def handle_admin_callbacks(query, data: str, context: ContextTypes.DEFAULT
         c.execute("SELECT id, name FROM categories ORDER BY position ASC, id ASC")
         cats = c.fetchall()
         conn.close()
+        alert_on = str(get_setting("restock_alert_enabled", "1")).strip().lower() not in ("0", "false", "off", "no")
+        alert_btn_lbl = "🔔 Stock Alert: ON ✅" if alert_on else "🔕 Stock Alert: OFF ❌"
         kb = [[InlineKeyboardButton(cat["name"], callback_data=f"adm_stk_step2_sub_{cat['id']}")] for cat in cats]
+        kb.append([InlineKeyboardButton("📊 Stock Dashboard (View / Search / Delete)", callback_data="adm_stk_dash_0")])
+        kb.append([
+            InlineKeyboardButton(alert_btn_lbl, callback_data="adm_stk_toggle_alert"),
+            InlineKeyboardButton("✏️ Edit Alert Msg", callback_data="adm_stk_alert_msg_view"),
+        ])
         kb.append([InlineKeyboardButton("< Back to Dashboard", callback_data="adm_root")])
         await query.edit_message_text("📥 <b>[Add Stock — ধাপ ১]</b>\nক্যাটাগরি সিলেক্ট করুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
         return
 
-    if data.startswith("adm_stk_step2_sub_"):
-        cat_id = int(data.split("_")[4])
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT name FROM categories WHERE id = ?", (cat_id,))
-        cat_row = c.fetchone()
-        c.execute("SELECT id, name FROM subcategories WHERE category_id = ? ORDER BY position ASC, id ASC", (cat_id,))
-        subs = c.fetchall()
-        conn.close()
-
-        cat_name = cat_row["name"] if cat_row else "Category"
-        kb = []
-        row = []
-        for s in subs:
-            row.append(InlineKeyboardButton(s["name"], callback_data=f"adm_stk_step3_prod_{s['id']}"))
-            if len(row) == 2:
-                kb.append(row)
-                row = []
-        if row:
-            kb.append(row)
-        kb.append([InlineKeyboardButton("< Back", callback_data="adm_stk_step1_cats")])
-        await query.edit_message_text(f"📥 <b>[Add Stock — ধাপ ২]</b>\n<b>{cat_name}</b> ➔ ব্র্যান্ড সিলেক্ট করুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
+    if data == "adm_stk_toggle_alert":
+        cur_on = str(get_setting("restock_alert_enabled", "1")).strip().lower() not in ("0", "false", "off", "no")
+        new_val = "0" if cur_on else "1"
+        set_setting("restock_alert_enabled", new_val)
+        await query.answer(f"Stock Added Alert {'চালু (ON) ✅' if new_val == '1' else 'বন্ধ (OFF) ❌'} করা হয়েছে!", show_alert=True)
+        await handle_admin_callbacks(query, "adm_stk_step1_cats", context)
         return
 
-    if data.startswith("adm_stk_step3_prod_"):
-        sub_id = int(data.split("_")[4])
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("""
-        SELECT s.name as sub_name, s.category_id, c.name as cat_name
-        FROM subcategories s
-        JOIN categories c ON s.category_id = c.id
-        WHERE s.id = ?
-        """, (sub_id,))
-        meta = c.fetchone()
-        c.execute("SELECT id, name, price_bdt FROM products WHERE subcategory_id = ? ORDER BY id ASC", (sub_id,))
-        prods = c.fetchall()
-        conn.close()
-
-        title = f"{meta['cat_name']} ➔ {meta['sub_name']}" if meta else "Select Variant"
-        kb = [[InlineKeyboardButton(f"📦 {p['name']} ({format_price(p['price_bdt'])} Tk)", callback_data=f"adm_stk_step4_upload_{p['id']}")] for p in prods]
-        back_cat = meta["category_id"] if meta else 1
-        kb.append([InlineKeyboardButton("< Back", callback_data=f"adm_stk_step2_sub_{back_cat}")])
-        await query.edit_message_text(f"📥 <b>[Add Stock — ধাপ ৩]</b>\n<b>{title}</b> ➔ প্যাকেজ সিলেক্ট করুন:", parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
-        return
-
-    if data.startswith("adm_stk_step4_upload_"):
-        prod_id = int(data.split("_")[4])
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT p.name as prod_name, s.name as sub_name FROM products p JOIN subcategories s ON p.subcategory_id = s.id WHERE p.id = ?", (prod_id,))
-        p = c.fetchone()
-        conn.close()
-
-        set_user_state(user_id, "ADMIN_WAITING_STOCK_INPUT", {"prod_id": prod_id})
-        await query.message.reply_text(
-            f"📥 <b>[Add Stock — ধাপ ৪: ডেটা আপলোড]</b>\n"
-            f"📦 প্রোডাক্ট: <b>{p['sub_name']} ({p['prod_name']})</b>\n"
+    if data == "adm_stk_alert_msg_view":
+        cur_tpl = str(get_setting("msg_restock_alert", "")).strip()
+        status_txt = "✅ <b>কাস্টম মেসেজ সেট করা আছে</b>" if cur_tpl else "⚪ <b>ডিফল্ট মেসেজ চালু আছে</b>"
+        prev_blk = f"\n\n📄 <b>বর্তমান কাস্টম মেসেজ:</b>\n<pre>{html.escape(cur_tpl[:800])}</pre>" if cur_tpl else ""
+        kb = [[InlineKeyboardButton("✏️ Edit Stock Alert Message", callback_data="adm_stk_alert_msg_set")]]
+        if cur_tpl:
+            kb.append([InlineKeyboardButton("🔄 Reset to Default", callback_data="adm_stk_alert_msg_reset")])
+        kb.append([InlineKeyboardButton("< Back to Add Stock", callback_data="adm_stk_step1_cats")])
+        await query.edit_message_text(
+            f"🔔 <b>Stock Added Notification Message</b>\n"
             f"─────────────────────────────\n"
-            f"• <code>.xlsx</code> এক্সেল ফাইল পাঠান অথবা প্রতি লাইনে একটি করে অ্যাকাউন্ট/প্রক্সি পেস্ট করুন।",
+            f"📌 অবস্থা: {status_txt}\n"
+            f"🧩 <b>ব্যবহারযোগ্য ভ্যারিয়েবল:</b>\n"
+            f"<code>{{product}}</code>, <code>{{category}}</code>, <code>{{added}}</code>, <code>{{total}}</code>, <code>{{price}}</code>"
+            f"{prev_blk}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=colorize_markup(InlineKeyboardMarkup(kb)),
+        )
+        return
+
+    if data == "adm_stk_alert_msg_set":
+        set_user_state(user_id, "ADMIN_WAITING_RESTOCK_MSG", {})
+        await query.message.reply_text(
+            "✏️ <b>নতুন Stock Added নোটিফিকেশন মেসেজটি লিখে পাঠান:</b>\n\n"
+            "🧩 <b>ভ্যারিয়েবল (প্রয়োজন হলে ব্যবহার করুন):</b>\n"
+            "• <code>{product}</code> — প্রোডাক্টের নাম\n"
+            "• <code>{category}</code> — ক্যাটাগরির নাম\n"
+            "• <code>{added}</code> — নতুন যোগ হওয়া স্টক সংখ্যা\n"
+            "• <code>{total}</code> — মোট বর্তমান স্টক\n"
+            "• <code>{price}</code> — প্রতি পিসের দাম",
             parse_mode=ParseMode.HTML,
         )
         return
 
+    if data == "adm_stk_alert_msg_reset":
+        set_setting("msg_restock_alert", "")
+        await handle_admin_callbacks(query, "adm_stk_alert_msg_view", context)
+        return
+
+    if data.startswith("adm_stk_dash_"):
+        page = int(data.split("_")[3])
+        limit = 8
+        offset = page * limit
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) as total_p FROM products")
+        total_p = c.fetchone()["total_p"]
+        c.execute("SELECT COUNT(*) as total_s FROM stock WHERE is_sold = 0")
+        total_unsold = c.fetchone()["total_s"]
+        c.execute("""
+            SELECT p.id, p.name, s.name as sub_name, COUNT(st.id) as stk_cnt
+            FROM products p
+            JOIN subcategories s ON p.subcategory_id = s.id
+            LEFT JOIN stock st ON p.id = st.product_id AND st.is_sold = 0
+            GROUP BY p.id, p.name, s.name
+            ORDER BY stk_cnt DESC, p.id ASC
+            LIMIT ? OFFSET ?
+        """, (limit, offset))
+        prods = c.fetchall()
+        conn.close()
+
+        txt = (
+            "📊 <b>Stock Dashboard (স্টক ড্যাশবোর্ড)</b>\n"
+            "─────────────────────────────\n"
+            f"📦 মোট প্রোডাক্ট ভ্যারিয়েন্ট: <b>{total_p}</b> টি\n"
+            f"🟢 মোট অবিক্রীত স্টক: <b>{total_unsold}</b> pcs\n\n"
+            "যেকোনো প্রোডাক্টে ক্লিক করে ভেতরের স্টক দেখুন ও ডিলিট করুন:"
+        )
+        kb = []
+        for p in prods:
+            lbl = f"📦 {p['sub_name']} — {p['name']} ({p['stk_cnt']} pcs)"
+            kb.append([InlineKeyboardButton(lbl[:55], callback_data=f"adm_stk_items_{p['id']}_0")])
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"adm_stk_dash_{page - 1}"))
+        if (offset + limit) < total_p:
+            nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"adm_stk_dash_{page + 1}"))
+        if nav:
+            kb.append(nav)
+        kb.append([InlineKeyboardButton("🔍 Search & Delete Stock Item", callback_data="adm_stk_search_start")])
+        kb.append([InlineKeyboardButton("< Back to Add Stock", callback_data="adm_stk_step1_cats")])
+        await query.edit_message_text(txt, parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
+        return
+
+    if data.startswith("adm_stk_items_"):
+        parts = data.split("_")
+        prod_id = int(parts[3])
+        page = int(parts[4])
+        limit = 8
+        offset = page * limit
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT p.name as prod_name, s.name as sub_name FROM products p JOIN subcategories s ON p.subcategory_id = s.id WHERE p.id = ?", (prod_id,))
+        pmeta = c.fetchone()
+        c.execute("SELECT COUNT(*) as cnt FROM stock WHERE product_id = ? AND is_sold = 0", (prod_id,))
+        total_items = c.fetchone()["cnt"]
+        c.execute("SELECT * FROM stock WHERE product_id = ? AND is_sold = 0 ORDER BY id ASC LIMIT ? OFFSET ?", (prod_id, limit, offset))
+        rows = c.fetchall()
+        conn.close()
+
+        title = f"{pmeta['sub_name']} — {pmeta['prod_name']}" if pmeta else f"Product #{prod_id}"
+        total_pages = max(1, (total_items + limit - 1) // limit)
+        txt = (
+            f"📦 <b>{html.escape(title)}</b>\n"
+            f"─────────────────────────────\n"
+            f"📊 অবিক্রীত স্টক: <b>{total_items} pcs</b> | পেজ: <b>{page + 1}/{total_pages}</b>\n\n"
+        )
+        kb = []
+        if not rows:
+            txt += "<i>এই প্রোডাক্টে বর্তমানে কোনো অবিক্রীত স্টক নেই।</i>"
+        else:
+            for idx, r in enumerate(rows, start=offset + 1):
+                r_keys = r.keys()
+                raw_val = str(r["data"] if "data" in r_keys else (r["content"] if "content" in r_keys else (r["account_data"] if "account_data" in r_keys else ""))).strip()
+                short_preview = raw_val[:34] + ("..." if len(raw_val) > 34 else "")
+                txt += f"<b>{idx}.</b> <code>{html.escape(raw_val[:55])}</code>\n"
+                kb.append([InlineKeyboardButton(f"🗑️ #{idx} | {short_preview}", callback_data=f"adm_stk_delitem_{r['id']}_{prod_id}_{page}")])
+
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"adm_stk_items_{prod_id}_{page - 1}"))
+        if (offset + limit) < total_items:
+            nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"adm_stk_items_{prod_id}_{page + 1}"))
+        if nav:
+            kb.append(nav)
+        kb.append([InlineKeyboardButton("🔍 Search in Stock", callback_data="adm_stk_search_start")])
+        kb.append([InlineKeyboardButton("< Back to Stock Dashboard", callback_data="adm_stk_dash_0")])
+        await query.edit_message_text(txt, parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb)))
+        return
+
+    if data.startswith("adm_stk_delitem_"):
+        parts = data.split("_")
+        stk_id = int(parts[3])
+        prod_id = int(parts[4])
+        page = int(parts[5])
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("DELETE FROM stock WHERE id = ?", (stk_id,))
+        conn.commit()
+        conn.close()
+        await query.answer("🗑️ স্টক আইটেমটি ডিলিট করা হয়েছে!", show_alert=False)
+        if prod_id == 0:
+            await query.edit_message_text("✅ সার্চ করা স্টক আইটেমটি সফলভাবে ডিলিট করা হয়েছে।")
+        else:
+            await handle_admin_callbacks(query, f"adm_stk_items_{prod_id}_{page}", context)
+        return
+
+    if data == "adm_stk_search_start":
+        set_user_state(user_id, "ADMIN_WAITING_STOCK_SEARCH", {})
+        await query.message.reply_text(
+            "🔍 <b>স্টক সার্চ ও ডিলিট:</b>\n"
+            "আপনি যে অ্যাকাউন্ট বা জিমেইলটি খুঁজতে/ডিলিট করতে চান তার সম্পূর্ণ বা আংশিক অংশ লিখে পাঠান (যেমন: <code>user123@hotmail.com</code> বা <code>user123</code>):",
+            parse_mode=ParseMode.HTML,
+        )
+        return
     if data == "adm_btn_step1_cats":
         conn = get_db()
         c = conn.cursor()
