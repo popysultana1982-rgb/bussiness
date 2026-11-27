@@ -6771,7 +6771,70 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 )
         return
+if state == "ADMIN_WAITING_RESTOCK_MSG":
+        raw_tpl = update.message.text.strip()
+        if raw_tpl:
+            set_setting("msg_restock_alert", raw_tpl)
+            set_user_state(user.id, None)
+            try:
+                await update.message.reply_text(
+                    f"✅ <b>Stock Added নোটিফিকেশন মেসেজ সফলভাবে আপডেট হয়েছে!</b>\n\n"
+                    f"👁️ <b>লাইভ প্রিভিউ:</b>\n─────────────────────\n{raw_tpl}",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as html_err:
+                await update.message.reply_text(
+                    f"✅ মেসেজ সেভ হয়েছে!\n⚠️ তবে HTML ট্যাগে ছোট ভুল থাকতে পারে ({html_err}) — প্রয়োজনে আবার এডিট করে ঠিক করে নিন।"
+                )
+        return
 
+    if state == "ADMIN_WAITING_STOCK_SEARCH":
+        q_str = text.strip()
+        set_user_state(user.id, None)
+        if not q_str:
+            await update.message.reply_text("❌ খালি টেক্সট দিয়ে সার্চ করা যাবে না।")
+            return
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("""
+            SELECT st.id, st.content, p.name as prod_name, s.name as sub_name
+            FROM stock st
+            JOIN products p ON st.product_id = p.id
+            JOIN subcategories s ON p.subcategory_id = s.id
+            WHERE st.is_sold = 0 AND LOWER(st.content) LIKE ?
+            ORDER BY st.id ASC
+            LIMIT 15
+        """, (f"%{q_str.lower()}%",))
+        matches = c.fetchall()
+        conn.close()
+
+        if not matches:
+            kb_back = colorize_markup(InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔍 আবার সার্চ করুন", callback_data="adm_stk_search_start")],
+                [InlineKeyboardButton("< Back to Stock Dashboard", callback_data="adm_stk_dash_0")],
+            ]))
+            await update.message.reply_text(
+                f"❌ <code>{html.escape(q_str)}</code> লিখে অবিক্রীত স্টকে কোনো অ্যাকাউন্ট পাওয়া যায়নি।",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb_back,
+            )
+            return
+
+        txt_res = (
+            f"🔍 <b>Search Results for:</b> <code>{html.escape(q_str)}</code>\n"
+            f"─────────────────────────────\n"
+            f"মোট পাওয়া গেছে: <b>{len(matches)}</b> টি (সর্বোচ্চ ১৫টি দেখানো হচ্ছে)\n\n"
+        )
+        kb_res = []
+        for idx, m in enumerate(matches, start=1):
+            c_val = str(m["content"] or "").strip()
+            short_c = c_val[:32] + ("..." if len(c_val) > 32 else "")
+            txt_res += f"<b>{idx}. [{html.escape(m['sub_name'])} - {html.escape(m['prod_name'])}]</b>\n<code>{html.escape(c_val[:65])}</code>\n\n"
+            kb_res.append([InlineKeyboardButton(f"🗑️ Delete #{idx} ({short_c})", callback_data=f"adm_stk_delitem_{m['id']}_0_0")])
+        kb_res.append([InlineKeyboardButton("🔍 Search Another", callback_data="adm_stk_search_start")])
+        kb_res.append([InlineKeyboardButton("< Back to Stock Dashboard", callback_data="adm_stk_dash_0")])
+        await update.message.reply_text(txt_res, parse_mode=ParseMode.HTML, reply_markup=colorize_markup(InlineKeyboardMarkup(kb_res)))
+        return
     if state == "ADMIN_WAITING_VPN_EMAIL":
         order_id = sdata.get("order_id")
         set_user_state(user.id, "ADMIN_WAITING_VPN_PASS", {"order_id": order_id, "email": text.strip()})
