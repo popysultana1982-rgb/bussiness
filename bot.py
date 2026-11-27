@@ -492,9 +492,14 @@ def add_notification(user_id: int, title: str, message: str):
     except Exception as e:
         logger.warning(f"add_notification error: {e}")
 async def broadcast_stock_restock_alert(bot, prod_id: int, prod_name: str, added_qty: int, total_stock: int, price: float, cat_name: str = ""):
-    """Sends an automatic restock alert to all registered bot users in the background."""
+    """Sends an automatic restock alert to all registered bot users if enabled in admin settings."""
     if not bot or added_qty <= 0:
         return
+    # Check if restock broadcast alert is enabled in admin settings (default: ON)
+    if str(get_setting("restock_alert_enabled", "1")).strip().lower() in ("0", "false", "off", "no"):
+        logger.info(f"Restock broadcast skipped for '{prod_name}' (disabled in admin settings).")
+        return
+
     try:
         conn = get_db()
         c = conn.cursor()
@@ -511,7 +516,7 @@ async def broadcast_stock_restock_alert(bot, prod_id: int, prod_name: str, added
         return
 
     cat_line = f"📂 <b>Category:</b> {html.escape(cat_name)}\n" if cat_name else ""
-    alert_text = (
+    default_alert = (
         "🚨 <b>NEW STOCK ADDED!</b> 🚨\n"
         "────────────────────────\n"
         f"📦 <b>Product:</b> {html.escape(prod_name)}\n"
@@ -520,9 +525,24 @@ async def broadcast_stock_restock_alert(bot, prod_id: int, prod_name: str, added
         f"📊 <b>Available Now:</b> {total_stock} pcs\n"
         f"💰 <b>Price:</b> ৳{price:.2f} / pc\n"
         "────────────────────────\n"
-        "⚡ <i>স্টক শেষ হওয়ার আগেই এখনই অর্ডার করুন!</i>"
-    
-     )
+        "⚡ <i>স্টক শেষ হওয়ার আগেই এখনই অর্ডার করুন!</i>"
+    )
+    custom_tpl = str(get_setting("msg_restock_alert", "")).strip()
+    if custom_tpl:
+        try:
+            alert_text = (
+                custom_tpl
+                .replace("{product}", html.escape(prod_name))
+                .replace("{category}", html.escape(cat_name or "General"))
+                .replace("{added}", str(added_qty))
+                .replace("{total}", str(total_stock))
+                .replace("{price}", f"{price:.2f}")
+            )
+        except Exception:
+            alert_text = default_alert
+    else:
+        alert_text = default_alert
+
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("🛒 Buy Now", callback_data=f"usr_prod_{prod_id}")]
     ])
